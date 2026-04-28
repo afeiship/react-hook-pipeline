@@ -1,0 +1,15 @@
+name: react-component-library
+files:
+  - 'packages/**/*.*'
+  - 'scripts/*'
+  - '.*'
+  - '*'
+  - '!node_modules'
+  - '!rif.config.yaml'
+replacements:
+  - from: /react-component-library-description/g
+    to: A React utility for dynamically composing Hook-enabled components via type-safe recursive rendering.
+  - from: /react-component-library/g
+    to: ${PROJECT_NAME}
+  - from: /Anonymous/g
+    to: ReactHookPipeline
