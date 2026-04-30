@@ -23,7 +23,7 @@ function useExtra<T extends { extra?: string }>(props: T, $chain: ChainContext<T
   return { ...props, extra: `enhanced-by-${$chain.id}` } as T;
 }
 
-function useLoading<T extends { loading?: boolean }>(props: T, $chain: ChainContext<T>): T {
+function useLoading<T extends { loading?: boolean }>(props: T): T {
   const [loading, setLoading] = useState(false);
   return { ...props, loading, setLoading } as T;
 }

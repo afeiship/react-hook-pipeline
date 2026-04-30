@@ -13,6 +13,9 @@ function Button({ label }: { label: string }) {
 }
 
 describe('edge cases', () => {
+  beforeAll(() => {
+    process.stdout.write('\n  ℹ️  💥  Error stack traces below are EXPECTED — testing error boundary and fallback behavior.\n\n');
+  });
   it('renders fallback when enhancer throws', () => {
     const brokenEnhancer: ProcessorHook<{ label: string }> = () => {
       throw new Error('boom');

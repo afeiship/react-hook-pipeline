@@ -10,6 +10,9 @@ import '@testing-library/jest-dom';
 import HookPipeline, { usePipeline } from '../src';
 
 describe('usePipeline()', () => {
+  beforeAll(() => {
+    process.stdout.write('\n  ℹ️  ⚠️  Error stack traces below are EXPECTED — testing usePipeline() guard clause.\n\n');
+  });
   it('provides totalProcessors count in Target', () => {
     function TargetWithPipeline(props: { label: string }) {
       const pipeline = usePipeline<{ label: string }>();
