@@ -1,0 +1,228 @@
+# react-hook-pipeline
+
+> A React utility for dynamically composing Hook-enabled enhancers via type-safe recursive rendering.
+
+## Overview
+
+`HookPipeline` lets you write custom hooks as enhancers and compose them into a rendering pipeline. Each enhancer hook is wrapped in its own React component to satisfy Rules of Hooks, enabling dynamic enhancer arrays determined at runtime (e.g. by config, permissions, or feature flags).
+
+**Key idea:** You write plain hooks. `HookPipeline` handles the recursive component wrapping so React's Rules of Hooks are always satisfied, even when the enhancer list changes between renders.
+
+## Installation
+
+```bash
+npm install @jswork/react-hook-pipeline
+# or
+yarn add @jswork/react-hook-pipeline
+```
+
+Peer dependencies: `react >= 18`, `react-dom >= 18`.
+
+## Exports
+
+```ts
+import HookPipeline, {
+  usePipeline,
+  type ProcessorHook,
+  type ChainContext,
+  type HookPipelineProps,
+  type PipelineState,
+} from '@jswork/react-hook-pipeline';
+```
+
+## Types
+
+### ProcessorHook<T>
+
+An enhancer function that receives current props and chain context, returning enhanced full props.
+
+```ts
+type ProcessorHook<T> = (props: T, $chain: ChainContext<T>) => T;
+```
+
+Each enhancer must return a complete `T` — spread the original fields and add/override as needed.
+
+### ChainContext<T>
+
+Metadata about the current enhancer's position in the chain.
+
+```ts
+interface ChainContext<T> {
+  index: number;      // 0-based position
+  total: number;      // total enhancer count
+  isLast: boolean;    // true for the last enhancer
+  prev: T | null;     // input props (null for the first enhancer)
+  id: string;         // function name or auto-generated "processor-N"
+}
+```
+
+### HookPipelineProps<T>
+
+```ts
+interface HookPipelineProps<T> {
+  baseProps: T;                // initial props flowing through the chain
+  enhancers: ProcessorHook<T>[]; // ordered enhancer hooks
+  Target: ComponentType<T>;    // component rendered after all enhancers
+  fallback?: ReactNode;        // UI when an enhancer throws
+  debug?: boolean;             // log changed keys per enhancer
+}
+```
+
+### PipelineState<T>
+
+Returned by `usePipeline()`.
+
+```ts
+interface PipelineState<T> {
+  currentIndex: number;
+  totalProcessors: number;
+  baseProps: T;
+  currentProps: T;
+  isLast: boolean;
+}
+```
+
+## Usage
+
+### Basic Example
+
+```tsx
+import HookPipeline from '@jswork/react-hook-pipeline';
+
+function Button({ label, loading, onClick }: ButtonProps) {
+  return <button disabled={loading} onClick={onClick}>{loading ? 'Loading...' : label}</button>;
+}
+
+// Write enhancers as plain hooks
+function useLoading<T extends { loading?: boolean }>(props: T): T {
+  const [loading, setLoading] = useState(false);
+  return { ...props, loading, setLoading };
+}
+
+function useAnalytics<T extends { onClick?: () => void }>(props: T): T {
+  const originalClick = props.onClick;
+  return {
+    ...props,
+    onClick: () => {
+      console.log('analytics: button clicked');
+      originalClick?.();
+    },
+  };
+}
+
+// Compose them
+<HookPipeline<ButtonProps>
+  baseProps={{ label: 'Save', onClick: handleSave }}
+  enhancers={[useLoading, useAnalytics]}
+  Target={Button}
+/>
+```
+
+### Empty Enhancers
+
+When `enhancers={}`, `Target` renders directly with `baseProps`. No wrapper components are created.
+
+### Debug Mode
+
+Set `debug` to log each enhancer's changed keys to the console:
+
+```tsx
+<HookPipeline
+  baseProps={{ label: 'Debug' }}
+  enhancers={[useLoading]}
+  Target={Button}
+  debug
+/>
+// Console: [HookPipeline] #0 useLoading: changed keys: loading, setLoading
+```
+
+### Error Handling
+
+When an enhancer throws, the error boundary renders `fallback` (or `null` if none provided):
+
+```tsx
+<HookPipeline
+  baseProps={{ label: 'Broken' }}
+  enhancers={[() => { throw new Error('boom'); }]}
+  Target={Button}
+  fallback={<div>Something went wrong</div>}
+/>
+```
+
+When an enhancer returns `undefined` or `null`, a warning is logged (in development) and the input props are used as fallback.
+
+### usePipeline() Hook
+
+Access pipeline state from inside the `Target` component or any descendant:
+
+```tsx
+import { usePipeline } from '@jswork/react-hook-pipeline';
+
+function MyTarget(props: MyProps) {
+  const pipeline = usePipeline<MyProps>();
+  return <div>{pipeline.totalProcessors} enhancers applied</div>;
+}
+```
+
+Must be called within a `<HookPipeline>` tree — throws otherwise.
+
+### Dynamic Enhancer Arrays
+
+Enhancers can be determined at runtime. Because each enhancer is wrapped in its own component, the hook call order remains stable:
+
+```tsx
+const enhancers = useMemo(() => {
+  const chain = [useAnalytics];
+  if (needsLoading) chain.unshift(useLoading);
+  if (needsConfirm) chain.unshift(useConfirm);
+  return chain;
+}, [needsLoading, needsConfirm]);
+
+<HookPipeline baseProps={props} enhancers={enhancers} Target={Button} />
+```
+
+## How It Works
+
+1. `HookPipeline` receives `baseProps` and an ordered `enhancers` array.
+2. It creates a recursive render chain: each enhancer is wrapped in a `HookWrapper` component.
+3. `HookWrapper` calls the enhancer hook, validates the return, and passes enhanced props to the next wrapper.
+4. After all enhancers run, final props are spread onto `Target`.
+5. `PipelineErrorBoundary` wraps the chain to catch enhancer errors.
+6. `PipelineContext.Provider` wraps everything so `usePipeline()` works at any depth.
+
+## Key Constraints
+
+- **Rules of Hooks**: Each enhancer hook is called inside its own component instance (`HookWrapper`). Never call hooks conditionally inside enhancers — use the dynamic enhancers array pattern instead.
+- **Full props return**: Every enhancer must return a complete `T`. Always spread `...props` and add/override fields. Returning `undefined` or `null` falls back to input props with a warning.
+- **Type propagation**: TypeScript cannot statically track accumulated types across enhancers. Use a unified interface that covers all possible fields (union of all enhancer outputs) as the generic `T`.
+- **Max enhancers**: A warning is logged in development if the chain exceeds 100 enhancers.
+
+## File Structure
+
+```
+packages/lib/src/
+  index.tsx            # barrel re-exports
+  types.ts             # ProcessorHook, ChainContext, HookPipelineProps, PipelineState
+  context.ts           # PipelineContext, usePipeline()
+  hook-pipeline.tsx    # HookPipeline component
+  hook-wrapper.tsx     # HookWrapper (internal)
+  error-boundary.tsx   # PipelineErrorBoundary (internal)
+  main.tsx             # entry point (re-exports index.tsx)
+
+packages/lib/__tests__/
+  01-basic-render.spec.tsx
+  02-chain-order.spec.tsx
+  03-chain-context.spec.tsx
+  04-use-pipeline.spec.tsx
+  05-edge-cases.spec.tsx
+```
+
+## Agent Notes
+
+- When generating enhancer hooks, always use the `(props: T, $chain: ChainContext<T>) => T` signature.
+- Ensure enhancers spread `...props` before adding new fields to avoid losing upstream data.
+- For stateful enhancers, use React hooks (`useState`, `useEffect`, etc.) freely — `HookWrapper` is a regular function component.
+- The `$chain.id` defaults to the function name. Named functions produce better debug output.
+- When the enhancer list may change between renders (e.g. toggling features), wrap it in `useMemo` to avoid unnecessary re-renders.
+- `fallback` is optional. Without it, a thrown error renders nothing (`null`).
+- `debug` logs use `console.log` with the `[HookPipeline]` prefix — one line per enhancer showing either "changed keys: ..." or "no change".
