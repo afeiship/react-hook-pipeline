@@ -4,8 +4,22 @@ import { PipelineState } from './types';
 const PipelineContext = createContext<PipelineState<unknown> | null>(null);
 
 /**
- * Access pipeline state from within a HookPipeline subtree.
- * Must be called inside a descendant of <HookPipeline>, otherwise throws.
+ * Access the current pipeline state from within a {@link HookPipeline} subtree.
+ *
+ * Must be called inside a component rendered by `<HookPipeline>`,
+ * otherwise an error is thrown.
+ *
+ * @typeParam T - The props type of the pipeline.
+ * @returns The current {@link PipelineState}.
+ *
+ * @example
+ * ```tsx
+ * function MyEnhancer(props, $chain) {
+ *   const pipeline = usePipeline<typeof props>();
+ *   console.log(pipeline.totalProcessors);
+ *   return props;
+ * }
+ * ```
  */
 function usePipeline<T>(): PipelineState<T> {
   const ctx = useContext(PipelineContext);
