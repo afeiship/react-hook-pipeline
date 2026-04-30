@@ -1,138 +1,19 @@
 import { useState, useCallback, useMemo } from 'react';
-import HookPipeline, {
-  usePipeline,
-  ProcessorHook,
-  ChainContext,
-} from '@jswork/react-hook-pipeline/src';
-
-// ─── Enhancer Hooks ───
-
-function useLoading<T extends { loading?: boolean; setLoading?: (v: boolean) => void }>(
-  props: T,
-  $chain: ChainContext<T>
-): T {
-  const [loading, setLoading] = useState(false);
-  return { ...props, loading, setLoading } as T;
-}
-
-function useAnalytics<T extends { onClick?: () => void }>(
-  props: T,
-  $chain: ChainContext<T>
-): T {
-  const track = useCallback(() => {
-    console.log(`[Analytics] Click tracked at pipeline #${$chain.index}`);
-    props.onClick?.();
-  }, [props.onClick, $chain.index]);
-  return { ...props, onClick: track } as T;
-}
-
-function useConfirm<T extends { onClick?: () => void; confirmMsg?: string }>(
-  props: T,
-  $chain: ChainContext<T>
-): T {
-  const confirmAndClick = useCallback(() => {
-    if (window.confirm(props.confirmMsg || 'Are you sure?')) {
-      props.onClick?.();
-    }
-  }, [props.onClick, props.confirmMsg]);
-  return { ...props, onClick: confirmAndClick } as T;
-}
-
-function useCounter<T extends { count?: number; setCount?: (v: number) => void }>(
-  props: T,
-  $chain: ChainContext<T>
-): T {
-  const [count, setCount] = useState(props.count ?? 0);
-  return { ...props, count, setCount } as T;
-}
-
-// ─── Target Components ───
-
-interface ButtonProps {
-  label: string;
-  onClick?: () => void;
-  loading?: boolean;
-  setLoading?: (v: boolean) => void;
-  confirmMsg?: string;
-}
-
-function ActionButton({ label, onClick, loading, setLoading }: ButtonProps) {
-  const pipeline = usePipeline<ButtonProps>();
-
-  const handleClick = () => {
-    setLoading?.(true);
-    onClick?.();
-    setTimeout(() => setLoading?.(false), 1500);
-  };
-
-  return (
-    <div className="flex items-center gap-3">
-      <button
-        className={`btn btn-sm ${loading ? 'btn-disabled' : 'btn-primary'}`}
-        onClick={handleClick}
-        disabled={loading}
-      >
-        {loading ? (
-          <span className="loading loading-spinner loading-xs" />
-        ) : null}
-        {loading ? 'Saving...' : label}
-      </button>
-      <span className="badge badge-ghost badge-sm">
-        {pipeline.totalProcessors} enhancers
-      </span>
-    </div>
-  );
-}
-
-interface CounterProps {
-  count: number;
-  setCount?: (v: number) => void;
-  label: string;
-}
-
-function CounterDisplay({ count, setCount, label }: CounterProps) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="text-sm font-medium">{label}:</span>
-      <div className="join">
-        <button
-          className="btn btn-sm join-item"
-          onClick={() => setCount?.(count - 1)}
-        >
-          -
-        </button>
-        <span className="btn btn-sm join-item no-animation cursor-default">
-          {count}
-        </span>
-        <button
-          className="btn btn-sm join-item"
-          onClick={() => setCount?.(count + 1)}
-        >
-          +
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Dynamic enhancer config ───
+import HookPipeline, { ProcessorHook } from '@jswork/react-hook-pipeline/src';
+import { useLoading, useAnalytics, useConfirm, useCounter } from './enhancers';
+import ActionButton, { ButtonProps } from './components/ActionButton';
+import CounterDisplay, { CounterProps } from './components/CounterDisplay';
 
 type EnhancerPreset = 'none' | 'basic' | 'full' | 'confirm';
 
 function getPresetEnhancers(preset: EnhancerPreset): ProcessorHook<ButtonProps>[] {
   switch (preset) {
-    case 'none':
-      return [];
-    case 'basic':
-      return [useLoading];
-    case 'full':
-      return [useLoading, useAnalytics];
-    case 'confirm':
-      return [useConfirm, useLoading, useAnalytics];
+    case 'none': return [];
+    case 'basic': return [useLoading];
+    case 'full': return [useLoading, useAnalytics];
+    case 'confirm': return [useConfirm, useLoading, useAnalytics];
   }
 }
-
-// ─── App ───
 
 function App() {
   const [preset, setPreset] = useState<EnhancerPreset>('full');
@@ -152,7 +33,7 @@ function App() {
           </p>
         </div>
 
-        {/* ─── Demo 1: Dynamic Preset ─── */}
+        {/* Demo 1: Dynamic Enhancer Chain */}
         <div className="card bg-base-100 shadow-sm">
           <div className="card-body">
             <h2 className="card-title text-lg">Dynamic Enhancer Chain</h2>
@@ -176,11 +57,7 @@ function App() {
 
             <div className="flex items-center gap-4">
               <HookPipeline<ButtonProps>
-                baseProps={{
-                  label: 'Save',
-                  onClick: handleSave,
-                  confirmMsg: 'Confirm save changes?',
-                }}
+                baseProps={{ label: 'Save', onClick: handleSave, confirmMsg: 'Confirm save changes?' }}
                 enhancers={enhancers}
                 Target={ActionButton}
                 debug
@@ -195,7 +72,7 @@ function App() {
           </div>
         </div>
 
-        {/* ─── Demo 2: Counter with useCounter enhancer ─── */}
+        {/* Demo 2: Stateful Enhancer */}
         <div className="card bg-base-100 shadow-sm">
           <div className="card-body">
             <h2 className="card-title text-lg">Stateful Enhancer</h2>
@@ -213,7 +90,7 @@ function App() {
           </div>
         </div>
 
-        {/* ─── Demo 3: Error Boundary ─── */}
+        {/* Demo 3: Error Boundary */}
         <div className="card bg-base-100 shadow-sm">
           <div className="card-body">
             <h2 className="card-title text-lg">Error Boundary</h2>
@@ -225,11 +102,7 @@ function App() {
 
             <HookPipeline<ButtonProps>
               baseProps={{ label: 'Broken' }}
-              enhancers={[
-                () => {
-                  throw new Error('Something went wrong!');
-                },
-              ]}
+              enhancers={[() => { throw new Error('Something went wrong!'); }]}
               Target={ActionButton}
               fallback={
                 <div className="alert alert-error alert-sm">
