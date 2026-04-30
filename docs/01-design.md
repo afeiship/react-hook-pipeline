@@ -47,3 +47,93 @@ Input:
   enhancers={[WithLoading, WithTooltip]}
   Target={Button}
 />
+```
+
+## Principle
+```tsx
+// components/ProcessorChain.tsx
+import React, { ComponentType, memo } from 'react';
+
+/**
+ * Processor 组件的 Props 泛型
+ * @template T - 透传的原始业务 props
+ */
+export type ProcessorProps<T = Record<string, any>> = 
+  T & {
+    children?: React.ReactNode;
+    /** 可选：传递链式上下文（如最终组件、全局配置） */
+    $chain?: {
+      FinalComponent: ComponentType<T>;
+      [key: string]: any;
+    };
+  };
+
+/**
+ * Processor 组件类型：接收增强后的 props，返回 JSX（含 children）
+ */
+export type Processor<T = Record<string, any>> = ComponentType<ProcessorProps<T>>;
+
+/**
+ * ProcessorChain 属性
+ */
+export interface ProcessorChainProps<T = Record<string, any>> {
+  /** 初始业务数据（不包含 children） */
+  baseProps: T;
+  /** Processor 组件数组，按顺序执行 */
+  processors: Processor<T>[];
+  /** 最终渲染的原始组件 */
+  FinalComponent: ComponentType<T>;
+  /** 可选：全局链式上下文 */
+  chainContext?: Record<string, any>;
+}
+
+/**
+ * 递归渲染 Processor 链
+ * 
+ * 执行流程:
+ * processors[0] → processors[1] → ... → FinalComponent
+ * 
+ * @example
+ * <ProcessorChain
+ *   baseProps={{ label: 'Save', onClick: handleSave }}
+ *   processors={[WithLoading, WithTooltip, WithAnalytics]}
+ *   FinalComponent={Button}
+ * />
+ */
+function ProcessorChain<T extends Record<string, any>>({
+  baseProps,
+  processors,
+  FinalComponent,
+  chainContext = {},
+}: ProcessorChainProps<T>) {
+  // 🎯 递归终止：无剩余 processor，渲染最终组件
+  if (processors.length === 0) {
+    return <FinalComponent {...baseProps} />;
+  }
+
+  // 🔄 取出第一个 processor，剩余继续递归
+  const [CurrentProcessor, ...remaining] = processors;
+
+  // 合并链式上下文
+  const chainProps = {
+    ...baseProps,
+    $chain: { FinalComponent, ...chainContext },
+    // children 是下一个递归层（或最终组件）
+    children: (
+      <ProcessorChain
+        baseProps={baseProps}
+        processors={remaining}
+        FinalComponent={FinalComponent}
+        chainContext={chainContext}
+      />
+    ),
+  };
+
+  return <CurrentProcessor {...(chainProps as ProcessorProps<T>)} />;
+}
+
+// ✅ 导出带泛型推断的 memo 版本，避免重复渲染
+export default memo(ProcessorChain) as <T extends Record<string, any>>(
+  props: ProcessorChainProps<T>
+) => ReturnType<typeof ProcessorChain>;
+```
