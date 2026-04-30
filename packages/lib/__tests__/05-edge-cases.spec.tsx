@@ -6,7 +6,7 @@
  */
 import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import HookPipeline, { ProcessorHook, ChainContext } from '../src';
+import HookPipeline, { ProcessorHook } from '../src';
 
 function Button({ label }: { label: string }) {
   return <button>{label}</button>;
